@@ -1,0 +1,384 @@
+#!python3
+import sys, getopt
+import yaml
+import re
+from colorama import Fore, Style
+from pprint import pprint
+opts, args = getopt.getopt(sys.argv[1:], "ihc:", ["help", "config="])
+if len(args) != 1:
+  raise Exception('can only process one script, have {}'.format(args))
+inputFile = args[0]
+
+def help():
+  helpStr = '''stepScript
+      example
+  '''
+  print(helpStr)
+blankExtractor = re.compile(r"^(\t+).*")
+def getLevel(input):
+  result = blankExtractor.findall(input)
+  if len(result) == 0:
+    return [0, input[:-1]]
+  elif len(result) == 1:
+    blank = result[0]
+    level = len(blank)
+    return [level, input[level:-1]]
+  else:
+    raise Exception('need debug here for {}'.format(input))
+# default config
+config = {
+  'structPrefix': '## ',
+  'skipPrefix': '#x ',
+  'normalPrefix': '# ',
+}
+commentStyle = f'{Fore.BLUE}{{}}{Style.BRIGHT}{Style.RESET_ALL}'
+commandStyle = f'{Fore.YELLOW}{{}}{Style.BRIGHT}{Style.RESET_ALL}'
+levelColor = [
+  f'{Fore.LIGHTGREEN_EX}{{}}{Style.NORMAL}{Style.RESET_ALL}',
+  f'{Fore.GREEN}{{}}{Style.NORMAL}{Style.RESET_ALL}',
+  f'{Fore.GREEN}{{}}{Style.BRIGHT}{Style.RESET_ALL}',
+]
+configFile = ''
+for op, value in opts:
+  if op in ['-h', '--help']:
+    help()
+  elif op in ['-c', '--config']:
+    configFile = value
+if configFile:
+  with open(configFile) as f:
+    _config = yaml.load(f)
+  config.update(_config)
+debug = False
+for op, value in opts:
+  if op in ['--indentDelimiter']:
+    config['indentDelimiter'] = value
+  elif op == '-i':
+    debug = True
+struct = {
+  'title': '',
+  'level': -1,
+  'commands': [],
+  "type": "struct",
+  'line': 0,
+}
+# basic struct
+stack = [struct]
+currentStruct = struct
+currentCommands = []
+f = open(inputFile)
+
+multilineState = False
+multilineList = []
+newGroup = True
+newCommand = None
+# main loop for parse
+for lineNumber, eachline in enumerate(f, start=1):
+  [thisLevel, eachline] = getLevel(eachline)
+  if not eachline.strip(): continue
+  #print('{:2d} {} {}'.format(thisLevel, thisLevel * '  ', eachline))
+  structLevel = currentStruct['level']
+  if thisLevel > structLevel: # normal state
+    pass
+  elif thisLevel <= structLevel: # goto last level
+    dlevel = structLevel - thisLevel + 1
+    #print('level -= {} with {}'.format(dlevel, eachline))
+    while dlevel:
+      currentStruct = stack.pop()
+      currentCommands = currentStruct['commands']
+      structLevel = currentStruct['level']
+      dlevel -= 1
+  if not newCommand:
+    newCommand = {
+      'comments': [],
+      'level': thisLevel,
+      'type': 'group',
+      'command': None,
+    }
+  if eachline.startswith('#!'): continue
+  elif eachline.startswith('set -e'): continue
+  elif eachline.startswith('#'): # this is a comment
+    if multilineState and not eachline.startswith('#mle'):
+      raise Exception('line {}: should not have comment in multiline state'.format(lineNumber))
+    if eachline.startswith('## '): # new struct, new level
+      newCommand = None
+      thisTitle = eachline[3:]
+      stack.append(currentStruct)
+      currentStruct = {
+        "title": thisTitle,
+        "level": thisLevel,
+        "commands": [],
+        "type": "struct",
+        "line": lineNumber,
+      }
+      currentCommands = currentStruct['commands']
+      stack[-1]['commands'].append(currentStruct)
+      #print('level ++ with {}'.format(eachline))
+    elif eachline.startswith('#x '): # no echo
+      pass
+    elif eachline.startswith('# '): # normal comment
+      newCommand['comments'].append(eachline)
+    elif eachline.startswith('#mls'): # start of multi line
+      multilineState = True
+    elif eachline.startswith('#mle'): # end of multi line
+      multilineState = False
+      newCommand['command'] = '\n'.join(multilineList)
+      newCommand['line'] = lineNumber
+      newCommand['multiline'] = True
+      currentCommands.append(newCommand)
+      newCommand = None
+  else: # this is a command
+    if multilineState:
+      multilineList.append(eachline)
+    else:
+      newCommand['command'] = eachline
+      newCommand['line'] = lineNumber
+      currentCommands.append(newCommand)
+      newCommand = None
+if len(stack) != 1:
+  raise Exception('final stack length should be 1, need debug!')
+
+# add label, stepCount for struct, tune the format
+commandCount = 0
+labelMaxLength = 1
+maxLineNumber = lineNumber
+def getFormat(N):
+  power = 1
+  while N > 10:
+    power += 1
+    N /= 10.
+  return '{{:0{}d}}'.format(power)
+def getDigital(N):
+  power = 1
+  while N > 10:
+    power += 1
+    N /= 10.
+  return power
+def modifyStructLabel(s, prefix):
+  global commandCount, labelMaxLength
+  if len(prefix) > labelMaxLength:
+    labelMaxLength = len(prefix)
+  s['label'] = prefix
+  if s['type'] == 'struct':
+    nformat = getFormat(len(s['commands']))
+    for index, each in enumerate(s['commands'], start=1):
+      index = nformat.format(index)
+      if prefix:
+        modifyStructLabel(each, f"{prefix}.{index}")
+      else:
+        modifyStructLabel(each, f"{index}")
+  elif s['type'] == 'group':
+    commandCount += 1
+    s['stepCount'] = commandCount
+modifyStructLabel(struct, '')
+stepFormat = getFormat(commandCount)
+labelFormat = "{{:{}}}".format(labelMaxLength)
+lineFormat = getFormat(maxLineNumber)
+def modifyStructLength(s):
+  s['label'] = labelFormat.format(s['label'])
+  s['line'] = lineFormat.format(s['line'])
+  if s['type'] == 'struct':
+    for each in s['commands']:
+      modifyStructLength(each)
+  elif s['type'] == 'group':
+    s['stepCount'] = stepFormat.format(s['stepCount'])
+modifyStructLength(struct)
+
+# output functions
+bashTemplate='''#!/bin/bash
+LABEL=""
+COUNT=""
+RERUN=""
+BYSTEP=""
+SHOW=""
+SHOWCOMMAND=""
+
+if [[ -f '.stepScript.session' ]]; then
+  LASTSESSION=`tail -n1 .stepScript.session`
+  LASTLINE=$(echo $LASTSESSION | cut -f1 -d"|")
+  LASTLABEL=$(echo $LASTSESSION | cut -f2 -d"|")
+  LASTCOUNT=$(echo $LASTSESSION | cut -f3 -d"|")
+else
+  LASTLINE=""
+  LASTLABEL=""
+  LASTCOUNT=""
+fi
+CURRENT_LABEL=""
+CURRENT_COUNT=""
+
+while getopts 'rsSAl:c:' OPT; do
+  case $OPT in
+    l)
+      LABEL="$OPTARG";;
+    c)
+      COUNT="$OPTARG";;
+    r)
+      RERUN="True";;
+    s)
+      BYSTEP="True";;
+    S)
+      SHOW="True";;
+    A)
+      SHOWCOMMAND="True";;
+    ?)
+cat << EOF
+usage: $0 [-slcr]
+  -r: rerun from the beginning
+  -s: run by steps
+  -l label: run from label
+  -c count: run from code count
+  -S: show skipped structures
+  -A: show skipped commands
+EOF
+exit 1
+  esac
+done
+
+check_error () {
+  if [[ "$?" -ne 0 ]]; then
+    echo "$1"
+    exit "$?"
+  fi
+}
+save_state () {
+  echo "$1" >> .stepScript.session
+}
+
+'''
+functionStructTemplate='''f_{label} () {{
+CURRENT_LABEL="{label}"
+if [[ -z "$RERUN" ]]; then
+  if [[ -n "$LASTCOUNT" && "$LASTCOUNT" > "$CURRENT_COUNT" ]]; then
+    if [[ -n "$SHOW" ]]; then
+      echo "{message}"
+    fi
+    return
+  fi
+  if [[ -n "$LASTLABEL" && "$LASTLABEL" > "$CURRENT_LABEL" ]]; then
+    if [[ -n "$SHOW" ]]; then
+      echo "{message}"
+    fi
+    return
+  fi
+fi
+  save_state "{stateMessage}"
+  echo "{message}"
+}}
+'''
+functionCommandTemplate='''f_{label} () {{
+CURRENT_LABEL="{label}"
+CURRENT_COUNT="{count}"
+if [[ -z "$RERUN" ]]; then
+  if [[ -n "$LASTCOUNT" && "$LASTCOUNT" > "$CURRENT_COUNT" ]]; then
+    if [[ -n "$SHOWCOMMAND" ]]; then
+      echo "{message}"
+    fi
+    return
+  fi
+  if [[ -n "$LASTLABEL" && "$LASTLABEL" > "$CURRENT_LABEL" ]]; then
+    if [[ -n "$SHOWCOMMAND" ]]; then
+      echo "{message}"
+    fi
+    return
+  fi
+fi
+save_state "{stateMessage}"
+if [[ -n "$BYSTEP" ]]; then
+  printf "{message}"
+  read -r _temp
+else
+  echo "{message}"
+fi
+{command}
+check_error "{errorMessage}"
+}}
+'''
+functionList = []
+mainList = []
+def gen(s, output=None):
+  isRoot = False
+  if output is None:
+    isRoot = True
+    output = {
+      'show': [],
+      'outfile': ''
+    }
+  levelStr = '  ' * s['level']
+  label = s['label']
+  if s['type'] == 'struct': # do struct
+    prefix = "{line}|{label}|{count}".format(
+                line=s['line'],
+                label=s['label'],
+                count=' ' * getDigital(commandCount))
+    if s['level'] >= 0:
+      colorLevel = s['level'] if s['level'] < len(levelColor) else len(levelColor)
+      title = levelColor[colorLevel].format(f"## {s['title']}")
+      stateMessage = f"{prefix}|{levelStr}{title}"
+      simpleMessage = f"  {levelStr}{title}"
+      output['show'].append(stateMessage)
+      functionList.append(functionStructTemplate.format(
+        label=label,
+        stateMessage=stateMessage,
+        message=simpleMessage
+      ))
+      mainList.append(f'f_{label}')
+    for each in s['commands']:
+      gen(each, output)
+  elif s['type'] == 'group': # do command
+    prefix = "{line}|{label}|{count}".format(
+                line=s['line'],
+                label=s['label'],
+                count=s['stepCount'])
+    lp = len(prefix)
+    blank = " " * lp
+    fullMessage = []
+    for comment in s['comments']:
+      comment = commentStyle.format(comment)
+      output['show'].append(f"{blank}|{levelStr}{comment}")
+      fullMessage.append(f"  {levelStr}{comment}")
+    if s['command']:
+      if s.get('multiline'):
+        for index, command in enumerate(s['command'].split('\n')):
+          if not index:
+            stateMessage = f"{prefix}|{levelStr}{command}"
+            output['show'].append(stateMessage)
+            fullMessage.append(commandStyle.format(f"$ {levelStr}{command}"))
+          else:
+            output['show'].append(f"{blank}|{levelStr}{command}")
+            fullMessage.append(commandStyle.format(f"$ {levelStr}{command}"))
+      else:
+        stateMessage = f"{prefix}|{levelStr}{s['command']}"
+        output['show'].append(stateMessage)
+        fullMessage.append(commandStyle.format(f"$ {levelStr}{s['command']}"))
+      functionList.append(functionCommandTemplate.format(
+        label=label,
+        count=s['stepCount'],
+        stateMessage=stateMessage,
+        message='\n'.join(fullMessage),
+        command=s['command'],
+        errorMessage=f"{Fore.RED}{stateMessage}{Style.BRIGHT}{Style.RESET_ALL}"
+      ))
+      mainList.append(f'f_{label}')
+  if isRoot:
+    output['func'] = functionList
+    output['main'] = mainList
+    output['outfile'] = '''{bashTemplate}
+{func}
+
+{main}
+    '''.format(
+        bashTemplate=bashTemplate,
+        func='\n'.join(functionList),
+        main='\n'.join(mainList),
+    )
+    return output
+
+output = gen(struct)
+with open(f'{inputFile}.step.sh', 'w') as f:
+  f.write(output['outfile'])
+
+if debug:
+  import ipdb
+  import json
+  #structStr = json.dumps(struct, indent=2)
+  #print(structStr)
+  ipdb.set_trace()
