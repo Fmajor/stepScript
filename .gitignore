@@ -1,4 +1,5 @@
 *.egg-info
 *.swp
 *.step.sh
+.stepScript.session
 build
