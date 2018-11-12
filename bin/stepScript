@@ -203,10 +203,6 @@ else
   LASTCOUNT=""
 fi
 
-if [[ -z "$RERUN" && -n "$LASTLABEL" || -n "$LASTCOUNT" ]]; then
-  echo "\x1b[36mStart at line:$LASTLINE label:$LASTLABEL count:$LASTCOUNT\x1b[0m"
-fi
-
 CURRENT_LABEL=""
 CURRENT_COUNT=""
 
@@ -237,6 +233,12 @@ EOF
 exit 1
   esac
 done
+
+if [[ -z "$RERUN" ]]; then
+  if [[ -n "$LASTLABEL" || -n "$LASTCOUNT" ]]; then
+    echo "\x1b[36mStart at line:$LASTLINE label:$LASTLABEL count:$LASTCOUNT\x1b[0m"
+  fi
+fi
 
 check_error () {
   if [[ "$?" -ne 0 ]]; then
