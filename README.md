@@ -95,7 +95,7 @@ rm .work.sh.step.sh
 ```
 #### all make commands
 ```shell
-$ make
+$ make # see the usage in examples above
        update
        show
        rerun
@@ -109,7 +109,8 @@ $ make
        label=
        count=
        clean
-# see the usage in examples above
+# goto the demo folder and run all example by yourself
+$ cd demo; bash runExamples.sh
 ```
 ## how to write a script file that can be parsed by stepScript
 see the [demo](#the-demo-script-file)

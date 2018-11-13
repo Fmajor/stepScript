@@ -81,17 +81,7 @@ Back   = AnsiBack()
 Style  = AnsiStyle()
 # end of colorama
 
-blankExtractor = re.compile(r"^(\t+).*")
-def getLevel(input):
-  result = blankExtractor.findall(input)
-  if len(result) == 0:
-    return [0, input[:-1]]
-  elif len(result) == 1:
-    blank = result[0]
-    level = len(blank)
-    return [level, input[level:-1]]
-  else:
-    raise Exception('need debug here for {}'.format(input))
+# three templates (can not add indent to fold them...)
 makefileTemplate='''.PHONY: update step showStruct showAll edit all run showCommand line count label rerun
 RAWSCRIPT := {file}
 SCRIPT := .$(RAWSCRIPT).step.sh
@@ -174,192 +164,6 @@ clean:
 	rm .stepScript.session
 	rm $(SCRIPT)
 '''
-def doPrepare(args):
-  mode = 'w'
-  if os.path.exists('./makefile'):
-    print('make file already exists, Enter twice to add to the tail, Ctrl+C to exit', end="")
-    _ = input()
-    _ = input()
-    mode = 'a'
-  with open('makefile', mode) as f:
-    if len(args):
-      f.write(makefileTemplate.format(file=os.path.basename(args[0])))
-    else:
-      f.write(makefileTemplate.format(file=''))
-  sys.exit(0)
-# default config
-config = {
-  'structPrefix': '## ',
-  'skipPrefix': '#x ',
-  'normalPrefix': '# ',
-}
-blue=Fore.BLUE;bright=Style.BRIGHT;resetall=Style.RESET_ALL;red=Fore.RED
-yellow=Fore.YELLOW;lightgreen_ex=Fore.LIGHTGREEN_EX;normal=Style.NORMAL
-green=Fore.GREEN
-
-commentStyle = '{blue}{{}}{bright}{resetall}'.format(**locals())
-commandStyle = '{yellow}{{}}{bright}{resetall}'.format(**locals())
-levelColor = [
-  '{lightgreen_ex}{{}}{normal}{resetall}'.format(**locals()),
-  '{green}{{}}{normal}{resetall}'.format(**locals()),
-  '{green}{{}}{bright}{resetall}'.format(**locals()),
-]
-configFile = ''
-onlyShow = False
-for op, value in opts:
-  if op in ['-h', '--help']:
-    help()
-  elif op in ['-c', '--config']:
-    configFile = value
-  elif op in ['--prepare']:
-    doPrepare(args)
-  elif op in ['--show']:
-    onlyShow = True
-if len(args) == 0:
-  help()
-inputFile = args[0]
-
-if configFile:
-  import yaml
-  with open(configFile) as f:
-    _config = yaml.load(f)
-  config.update(_config)
-debug = False
-for op, value in opts:
-  if op in ['--indentDelimiter']:
-    config['indentDelimiter'] = value
-  elif op == '-i':
-    debug = True
-struct = {
-  'title': '',
-  'level': -1,
-  'commands': [],
-  "type": "struct",
-  'line': 0,
-}
-# basic struct
-stack = [struct]
-currentStruct = struct
-currentCommands = []
-f = open(inputFile)
-
-multilineState = False
-multilineList = []
-newGroup = True
-newCommand = None
-# main loop for parse
-for lineNumber, eachline in enumerate(f, start=1):
-  [thisLevel, eachline] = getLevel(eachline)
-  if not eachline.strip(): continue
-  #print('{:2d} {} {}'.format(thisLevel, thisLevel * '  ', eachline))
-  structLevel = currentStruct['level']
-  if thisLevel > structLevel: # normal state
-    pass
-  elif thisLevel <= structLevel: # goto last level
-    dlevel = structLevel - thisLevel + 1
-    #print('level -= {} with {}'.format(dlevel, eachline))
-    while dlevel:
-      currentStruct = stack.pop()
-      currentCommands = currentStruct['commands']
-      structLevel = currentStruct['level']
-      dlevel -= 1
-  if not newCommand:
-    newCommand = {
-      'comments': [],
-      'level': thisLevel,
-      'type': 'group',
-      'command': None,
-    }
-  if eachline.startswith('#!'): continue
-  elif eachline.startswith('set -e'): continue
-  elif eachline.startswith('#'): # this is a comment
-    if multilineState and not eachline.startswith('#mle'):
-      raise Exception('line {}: should not have comment in multiline state'.format(lineNumber))
-    if eachline.startswith('## '): # new struct, new level
-      newCommand = None
-      thisTitle = eachline[3:]
-      stack.append(currentStruct)
-      currentStruct = {
-        "title": thisTitle,
-        "level": thisLevel,
-        "commands": [],
-        "type": "struct",
-        "line": lineNumber,
-      }
-      currentCommands = currentStruct['commands']
-      stack[-1]['commands'].append(currentStruct)
-      #print('level ++ with {}'.format(eachline))
-    elif eachline.startswith('#x '): # no echo
-      pass
-    elif eachline.startswith('# '): # normal comment
-      newCommand['comments'].append(eachline)
-    elif eachline.startswith('#mls'): # start of multi line
-      multilineState = True
-    elif eachline.startswith('#mle'): # end of multi line
-      multilineState = False
-      newCommand['command'] = '\n'.join(multilineList)
-      newCommand['line'] = lineNumber
-      newCommand['multiline'] = True
-      currentCommands.append(newCommand)
-      newCommand = None
-  else: # this is a command
-    if multilineState:
-      multilineList.append(eachline)
-    else:
-      newCommand['command'] = eachline
-      newCommand['line'] = lineNumber
-      currentCommands.append(newCommand)
-      newCommand = None
-if len(stack) != 1:
-  raise Exception('final stack length should be 1, need debug!')
-
-# add label, stepCount for struct, tune the format
-commandCount = 0
-labelMaxLength = 1
-maxLineNumber = lineNumber
-def getFormat(N):
-  power = 1
-  while N > 10:
-    power += 1
-    N /= 10.
-  return '{{:0{}d}}'.format(power)
-def getDigital(N):
-  power = 1
-  while N > 10:
-    power += 1
-    N /= 10.
-  return power
-def modifyStructLabel(s, prefix):
-  global commandCount, labelMaxLength
-  if len(prefix) > labelMaxLength:
-    labelMaxLength = len(prefix)
-  s['label'] = prefix
-  if s['type'] == 'struct':
-    nformat = getFormat(len(s['commands']))
-    for index, each in enumerate(s['commands'], start=1):
-      index = nformat.format(index)
-      if prefix:
-        modifyStructLabel(each, "{prefix}.{index}".format(**locals()))
-      else:
-        modifyStructLabel(each, "{index}".format(**locals()))
-  elif s['type'] == 'group':
-    commandCount += 1
-    s['stepCount'] = commandCount
-modifyStructLabel(struct, '')
-stepFormat = getFormat(commandCount)
-labelFormat = "{{:{}}}".format(labelMaxLength)
-lineFormat = getFormat(maxLineNumber)
-def modifyStructLength(s):
-  s['label'] = labelFormat.format(s['label'])
-  s['line'] = lineFormat.format(s['line'])
-  if s['type'] == 'struct':
-    for each in s['commands']:
-      modifyStructLength(each)
-  elif s['type'] == 'group':
-    s['stepCount'] = stepFormat.format(s['stepCount'])
-modifyStructLength(struct)
-
-# output functions
 bashTemplate='''#!/bin/bash
 RERUN=""
 BYSTEP=""
@@ -521,6 +325,207 @@ fi
 check_error "{errorMessage}"
 }}
 '''
+# end of templates
+
+blankExtractor = re.compile(r"^(\t+).*")
+def getLevel(input):
+  result = blankExtractor.findall(input)
+  if len(result) == 0:
+    return [0, input[:-1]]
+  elif len(result) == 1:
+    blank = result[0]
+    level = len(blank)
+    return [level, input[level:-1]]
+  else:
+    raise Exception('need debug here for {}'.format(input))
+def doPrepare(args):
+  mode = 'w'
+  if os.path.exists('./makefile'):
+    print('make file already exists, Enter twice to add to the tail, Ctrl+C to exit', end="")
+    _ = input()
+    _ = input()
+    mode = 'a'
+  with open('makefile', mode) as f:
+    if len(args):
+      f.write(makefileTemplate.format(file=os.path.basename(args[0])))
+    else:
+      f.write(makefileTemplate.format(file=''))
+  sys.exit(0)
+# default config
+config = {
+  'structPrefix': '## ',
+  'skipPrefix': '#x ',
+  'normalPrefix': '# ',
+}
+blue=Fore.BLUE;bright=Style.BRIGHT;resetall=Style.RESET_ALL;red=Fore.RED
+yellow=Fore.YELLOW;lightgreen_ex=Fore.LIGHTGREEN_EX;normal=Style.NORMAL
+green=Fore.GREEN
+
+commentStyle = '{blue}{{}}{bright}{resetall}'.format(**locals())
+commandStyle = '{yellow}{{}}{bright}{resetall}'.format(**locals())
+levelColor = [
+  '{lightgreen_ex}{{}}{normal}{resetall}'.format(**locals()),
+  '{green}{{}}{normal}{resetall}'.format(**locals()),
+  '{green}{{}}{bright}{resetall}'.format(**locals()),
+]
+# process args
+configFile = ''
+onlyShow = False
+for op, value in opts:
+  if op in ['-h', '--help']:
+    help()
+  elif op in ['-c', '--config']:
+    configFile = value
+  elif op in ['--prepare']:
+    doPrepare(args)
+  elif op in ['--show']:
+    onlyShow = True
+if len(args) == 0:
+  help()
+inputFile = args[0]
+
+if configFile:
+  import yaml
+  with open(configFile) as f:
+    _config = yaml.load(f)
+  config.update(_config)
+debug = False
+for op, value in opts:
+  if op in ['--indentDelimiter']:
+    config['indentDelimiter'] = value
+  elif op == '-i':
+    debug = True
+struct = {
+  'title': '',
+  'level': -1,
+  'commands': [],
+  "type": "struct",
+  'line': 0,
+}
+# basic struct
+stack = [struct]
+currentStruct = struct
+currentCommands = []
+f = open(inputFile)
+
+multilineState = False
+multilineList = []
+newGroup = True
+newCommand = None
+# main loop for parser
+for lineNumber, eachline in enumerate(f, start=1):
+  [thisLevel, eachline] = getLevel(eachline)
+  if not eachline.strip(): continue
+  #print('{:2d} {} {}'.format(thisLevel, thisLevel * '  ', eachline))
+  structLevel = currentStruct['level']
+  if thisLevel > structLevel: # normal state
+    pass
+  elif thisLevel <= structLevel: # goto last level
+    dlevel = structLevel - thisLevel + 1
+    #print('level -= {} with {}'.format(dlevel, eachline))
+    while dlevel:
+      currentStruct = stack.pop()
+      currentCommands = currentStruct['commands']
+      structLevel = currentStruct['level']
+      dlevel -= 1
+  if not newCommand:
+    newCommand = {
+      'comments': [],
+      'level': thisLevel,
+      'type': 'group',
+      'command': None,
+    }
+  if eachline.startswith('#!'): continue
+  elif eachline.startswith('set -e'): continue
+  elif eachline.startswith('#'): # this is a comment
+    if multilineState and not eachline.startswith('#mle'):
+      raise Exception('line {}: should not have comment in multiline state'.format(lineNumber))
+    if eachline.startswith('## '): # new struct, new level
+      newCommand = None
+      thisTitle = eachline[3:]
+      stack.append(currentStruct)
+      currentStruct = {
+        "title": thisTitle,
+        "level": thisLevel,
+        "commands": [],
+        "type": "struct",
+        "line": lineNumber,
+      }
+      currentCommands = currentStruct['commands']
+      stack[-1]['commands'].append(currentStruct)
+      #print('level ++ with {}'.format(eachline))
+    elif eachline.startswith('#x '): # no echo
+      pass
+    elif eachline.startswith('# '): # normal comment
+      newCommand['comments'].append(eachline)
+    elif eachline.startswith('#mls'): # start of multi line
+      multilineState = True
+    elif eachline.startswith('#mle'): # end of multi line
+      multilineState = False
+      newCommand['command'] = '\n'.join(multilineList)
+      newCommand['line'] = lineNumber
+      newCommand['multiline'] = True
+      currentCommands.append(newCommand)
+      newCommand = None
+  else: # this is a command
+    if multilineState:
+      multilineList.append(eachline)
+    else:
+      newCommand['command'] = eachline
+      newCommand['line'] = lineNumber
+      currentCommands.append(newCommand)
+      newCommand = None
+f.close()
+if len(stack) != 1:
+  raise Exception('final stack length should be 1, need debug!')
+
+# add label, stepCount for struct, tune the format
+commandCount = 0
+labelMaxLength = 1
+maxLineNumber = lineNumber
+def getFormat(N):
+  power = 1
+  while N > 10:
+    power += 1
+    N /= 10.
+  return '{{:0{}d}}'.format(power)
+def getDigital(N):
+  power = 1
+  while N > 10:
+    power += 1
+    N /= 10.
+  return power
+def modifyStructLabel(s, prefix):
+  global commandCount, labelMaxLength
+  if len(prefix) > labelMaxLength:
+    labelMaxLength = len(prefix)
+  s['label'] = prefix
+  if s['type'] == 'struct':
+    nformat = getFormat(len(s['commands']))
+    for index, each in enumerate(s['commands'], start=1):
+      index = nformat.format(index)
+      if prefix:
+        modifyStructLabel(each, "{prefix}.{index}".format(**locals()))
+      else:
+        modifyStructLabel(each, "{index}".format(**locals()))
+  elif s['type'] == 'group':
+    commandCount += 1
+    s['stepCount'] = commandCount
+modifyStructLabel(struct, '')
+stepFormat = getFormat(commandCount)
+labelFormat = "{{:{}}}".format(labelMaxLength)
+lineFormat = getFormat(maxLineNumber)
+def modifyStructLength(s):
+  s['label'] = labelFormat.format(s['label'])
+  s['line'] = lineFormat.format(s['line'])
+  if s['type'] == 'struct':
+    for each in s['commands']:
+      modifyStructLength(each)
+  elif s['type'] == 'group':
+    s['stepCount'] = stepFormat.format(s['stepCount'])
+modifyStructLength(struct)
+# finish struct analysis, not generate output data
+# output functions
 functionList = []
 mainList = []
 def gen(s, output=None):
