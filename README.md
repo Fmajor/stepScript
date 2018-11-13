@@ -80,10 +80,10 @@ we skip good command (by command count, 15 in this example)
 #### rerun and show all skipped things
 ![rerun](./figs/rerun_showAll.png)
 #### rerun from last good line number, label or command count (read from session file)
-Make sure you understand [how stepScript parse the script](#how-stepscript-understand-the-script-file)
+Make sure you understand [how stepScript parse the script](#how-stepscript-parse-the-script-file)
 ![with_flag](./figs/with_flag.png)
 #### rerun from given line number, label or command count
-Make sure you understand [how stepScript parse the script](#how-stepscript-understand-the-script-file)
+Make sure you understand [how stepScript parse the script](#how-stepscript-parse-the-script-file)
 ![with_value](./figs/with_value.png)
 #### step mode (run command by command with ENTER)
 ![step](./figs/step.gif)
