@@ -92,8 +92,8 @@ def getLevel(input):
     return [level, input[level:-1]]
   else:
     raise Exception('need debug here for {}'.format(input))
-makefileTemplate='''.PHONY: update step showStruct showAll edit all run showCommand
-RAWSCRIPT :=
+makefileTemplate='''.PHONY: update step showStruct showAll edit all run showCommand line count label
+RAWSCRIPT := {file}
 SCRIPT := .$(RAWSCRIPT).step.sh
 FLAGS :=
 
@@ -116,6 +116,12 @@ showCommand: run
 showAll: run
 	@:
 update: run
+	@:
+line: run
+	@:
+count: run
+	@:
+label: run
 	@:
 edit:
 	vim ./.stepScript.session
@@ -146,12 +152,27 @@ endif
 ifneq ($(findstring showAll,$(MAKECMDGOALS)),)
 	$(eval FLAGS:=$(FLAGS) -SA)
 endif
-	bash $(SCRIPT) $(FLAGS)
+ifneq ($(label),)
+	$(eval FLAGS:=$(FLAGS) -L"$(label)")
+else ifneq ($(findstring label,$(MAKECMDGOALS)),)
+	$(eval FLAGS:=$(FLAGS) -l)
+endif
+ifneq ($(line),)
+	$(eval FLAGS:=$(FLAGS) -N"$(line)")
+else ifneq ($(findstring line,$(MAKECMDGOALS)),)
+	$(eval FLAGS:=$(FLAGS) -n)
+endif
+ifneq ($(count),)
+	$(eval FLAGS:=$(FLAGS) -C"$(count)")
+else ifneq ($(findstring count,$(MAKECMDGOALS)),)
+	$(eval FLAGS:=$(FLAGS) -c)
+endif
+	bash -- $(SCRIPT) $(FLAGS)
 clean:
 	rm .stepScript.session
 	rm $(SCRIPT)
 '''
-def doPrepare():
+def doPrepare(args):
   mode = 'w'
   if os.path.exists('./makefile'):
     print('make file already exists, Enter twice to add to the tail, Ctrl+C to exit', end="")
@@ -159,7 +180,10 @@ def doPrepare():
     _ = input()
     mode = 'a'
   with open('makefile', mode) as f:
-    f.write(makefileTemplate)
+    if len(args):
+      f.write(makefileTemplate.format(file=os.path.basename(args[0])))
+    else:
+      f.write(makefileTemplate.format(file=''))
   sys.exit(0)
 # default config
 config = {
@@ -182,7 +206,7 @@ for op, value in opts:
   elif op in ['-c', '--config']:
     configFile = value
   elif op in ['--prepare']:
-    doPrepare()
+    doPrepare(args)
   elif op in ['--show']:
     onlyShow = True
 if len(args) == 0:
@@ -351,26 +375,31 @@ CURRENT_LINE=""
 CURRENT_LABEL=""
 CURRENT_COUNT=""
 
-while getopts 'rsSAl:c:L:' OPT; do
+while getopts 'rsSAnlcN:L:C:' OPT; do
   case $OPT in
-    l)
-      if [[ -n "$OPTARG" ]]; then
-        LASTLABEL="$OPTARG"
-      fi
+    L)
+      LASTLABEL="$OPTARG"
       LASTCOUNT=""
       LASTLINE=""
       ;;
-    L)
-      if [[ -n "$OPTARG" ]]; then
-        LASTLINE="$OPTARG"
-      fi
+    N)
+      LASTLINE="$OPTARG"
+      LASTCOUNT=""
+      LASTLABEL=""
+      ;;
+    C)
+      LASTCOUNT="$OPTARG"
+      LASTLINE=""
+      LASTLABEL=""
+      ;;
+    l)
+      LASTCOUNT="" LASTLINE=""
+      ;;
+    n)
       LASTCOUNT=""
       LASTLABEL=""
       ;;
     c)
-      if [[ -n "$OPTARG" ]]; then
-        COUNT="$OPTARG"
-      fi
       LASTLINE=""
       LASTLABEL=""
       ;;
@@ -386,9 +415,13 @@ while getopts 'rsSAl:c:L:' OPT; do
 cat << EOF
 usage: $0 [-slcr]
   -r: rerun from the beginning
+  -l:       run by label, read from session file
+  -l label: run by label
+  -n     :  run by line, read from session file
+  -N line:  run by line
+  -c:       run by code count, read from session file
+  -C count: run by code count
   -s: run by steps
-  -l label: run from label
-  -c count: run from code count
   -S: show skipped structures
   -A: show skipped commands
 EOF
@@ -397,8 +430,8 @@ exit 1
 done
 
 if [[ -z "$RERUN" ]]; then
-  if [[ -n "$LASTLABEL" || -n "$LASTCOUNT" ]]; then
-    echo "\x1b[36mStart at line:$LASTLINE label:$LASTLABEL count:$LASTCOUNT\x1b[0m"
+  if [[ -n "$LASTLABEL" || -n "$LASTCOUNT" || -n "$LASTLINE" ]]; then
+    echo "\x1b[36mStart at count:$LASTCOUNT|line:$LASTLINE|label:$LASTLABEL\x1b[0m"
   fi
 fi
 
