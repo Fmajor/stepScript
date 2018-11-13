@@ -3,3 +3,4 @@
 *.step.sh
 .stepScript.session
 build
+demo/makefile

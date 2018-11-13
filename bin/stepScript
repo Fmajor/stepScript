@@ -1,19 +1,86 @@
 #!python3
-import sys, getopt
-import yaml
+import sys
+import getopt
 import re
-from colorama import Fore, Style
-from pprint import pprint
-opts, args = getopt.getopt(sys.argv[1:], "ihc:", ["help", "config="])
-if len(args) != 1:
-  raise Exception('can only process one script, have {}'.format(args))
-inputFile = args[0]
-
+import os
+opts, args = getopt.getopt(sys.argv[1:], "ihc:", ["help", "config=", "prepare", "show"])
 def help():
-  helpStr = '''stepScript
-      example
-  '''
+  helpStr = '''stepScript [-ic] [--help --prepare] [scriptToProcess]
+    -i:         go into debug mode
+    -c file:    use file as config file
+    -h, --help: print this help string
+    --prepare:  generate makefile to play with'''
   print(helpStr)
+  sys.exit(1)
+if len(args) > 1:
+  raise Exception('can only process one script, have {}'.format(args))
+
+# to reduce the dependency, copy the source code from colorama
+# begin from colorama/ansi.py
+CSI = '\033['
+OSC = '\033]'
+BEL = '\007'
+def code_to_chars(code):
+    return CSI + str(code) + 'm'
+class AnsiCodes(object):
+    def __init__(self):
+        # the subclasses declare class attributes which are numbers.
+        # Upon instantiation we define instance attributes, which are the same
+        # as the class attributes but wrapped with the ANSI escape sequence
+        for name in dir(self):
+            if not name.startswith('_'):
+                value = getattr(self, name)
+                setattr(self, name, code_to_chars(value))
+class AnsiFore(AnsiCodes):
+    BLACK           = 30
+    RED             = 31
+    GREEN           = 32
+    YELLOW          = 33
+    BLUE            = 34
+    MAGENTA         = 35
+    CYAN            = 36
+    WHITE           = 37
+    RESET           = 39
+
+    # These are fairly well supported, but not part of the standard.
+    LIGHTBLACK_EX   = 90
+    LIGHTRED_EX     = 91
+    LIGHTGREEN_EX   = 92
+    LIGHTYELLOW_EX  = 93
+    LIGHTBLUE_EX    = 94
+    LIGHTMAGENTA_EX = 95
+    LIGHTCYAN_EX    = 96
+    LIGHTWHITE_EX   = 97
+class AnsiBack(AnsiCodes):
+    BLACK           = 40
+    RED             = 41
+    GREEN           = 42
+    YELLOW          = 43
+    BLUE            = 44
+    MAGENTA         = 45
+    CYAN            = 46
+    WHITE           = 47
+    RESET           = 49
+
+    # These are fairly well supported, but not part of the standard.
+    LIGHTBLACK_EX   = 100
+    LIGHTRED_EX     = 101
+    LIGHTGREEN_EX   = 102
+    LIGHTYELLOW_EX  = 103
+    LIGHTBLUE_EX    = 104
+    LIGHTMAGENTA_EX = 105
+    LIGHTCYAN_EX    = 106
+    LIGHTWHITE_EX   = 107
+class AnsiStyle(AnsiCodes):
+    BRIGHT    = 1
+    DIM       = 2
+    NORMAL    = 22
+    RESET_ALL = 0
+Fore   = AnsiFore()
+Back   = AnsiBack()
+Style  = AnsiStyle()
+# end of colorama
+
 blankExtractor = re.compile(r"^(\t+).*")
 def getLevel(input):
   result = blankExtractor.findall(input)
@@ -25,6 +92,75 @@ def getLevel(input):
     return [level, input[level:-1]]
   else:
     raise Exception('need debug here for {}'.format(input))
+makefileTemplate='''.PHONY: update step showStruct showAll edit all run showCommand
+RAWSCRIPT :=
+SCRIPT := .$(RAWSCRIPT).step.sh
+FLAGS :=
+
+all: run
+show:
+ifeq ($(RAWSCRIPT),)
+	$(error the name of the raw script is empty, edit it...)
+endif
+	stepScript --show $(RAWSCRIPT)
+
+help:
+	@echo "update step showStruct showAll edit"
+
+step: run
+	@:
+showStruct: run
+	@:
+showCommand: run
+	@:
+showAll: run
+	@:
+update: run
+	@:
+edit:
+	vim ./.stepScript.session
+
+doProcess :=
+ifneq ($(SCRIPT), $(wildcard $(SCRIPT)))
+	doProcess:=True
+endif
+ifneq ($(findstring update,$(MAKECMDGOALS)),)
+	doProcess:=True
+endif
+run:
+ifeq ($(RAWSCRIPT),)
+	$(error the name of the raw script is empty, edit it...)
+endif
+ifneq ($(doProcess),)
+	stepScript $(RAWSCRIPT)
+endif
+ifneq ($(findstring step,$(MAKECMDGOALS)),)
+	$(eval FLAGS:=$(FLAGS) -s)
+endif
+ifneq ($(findstring showStruct,$(MAKECMDGOALS)),)
+	$(eval FLAGS:=$(FLAGS) -S)
+endif
+ifneq ($(findstring showCommand,$(MAKECMDGOALS)),)
+	$(eval FLAGS:=$(FLAGS) -A)
+endif
+ifneq ($(findstring showAll,$(MAKECMDGOALS)),)
+	$(eval FLAGS:=$(FLAGS) -SA)
+endif
+	bash $(SCRIPT) $(FLAGS)
+clean:
+	rm .stepScript.session
+	rm $(SCRIPT)
+'''
+def doPrepare():
+  mode = 'w'
+  if os.path.exists('./makefile'):
+    print('make file already exists, Enter twice to add to the tail, Ctrl+C to exit', end="")
+    _ = input()
+    _ = input()
+    mode = 'a'
+  with open('makefile', mode) as f:
+    f.write(makefileTemplate)
+  sys.exit(0)
 # default config
 config = {
   'structPrefix': '## ',
@@ -39,12 +175,22 @@ levelColor = [
   f'{Fore.GREEN}{{}}{Style.BRIGHT}{Style.RESET_ALL}',
 ]
 configFile = ''
+onlyShow = False
 for op, value in opts:
   if op in ['-h', '--help']:
     help()
   elif op in ['-c', '--config']:
     configFile = value
+  elif op in ['--prepare']:
+    doPrepare()
+  elif op in ['--show']:
+    onlyShow = True
+if len(args) == 0:
+  help()
+inputFile = args[0]
+
 if configFile:
+  import yaml
   with open(configFile) as f:
     _config = yaml.load(f)
   config.update(_config)
@@ -185,8 +331,6 @@ modifyStructLength(struct)
 
 # output functions
 bashTemplate='''#!/bin/bash
-LABEL=""
-COUNT=""
 RERUN=""
 BYSTEP=""
 SHOW=""
@@ -203,15 +347,33 @@ else
   LASTCOUNT=""
 fi
 
+CURRENT_LINE=""
 CURRENT_LABEL=""
 CURRENT_COUNT=""
 
-while getopts 'rsSAl:c:' OPT; do
+while getopts 'rsSAl:c:L:' OPT; do
   case $OPT in
     l)
-      LABEL="$OPTARG";;
+      if [[ -n "$OPTARG" ]]; then
+        LASTLABEL="$OPTARG"
+      fi
+      LASTCOUNT=""
+      LASTLINE=""
+      ;;
+    L)
+      if [[ -n "$OPTARG" ]]; then
+        LASTLINE="$OPTARG"
+      fi
+      LASTCOUNT=""
+      LASTLABEL=""
+      ;;
     c)
-      COUNT="$OPTARG";;
+      if [[ -n "$OPTARG" ]]; then
+        COUNT="$OPTARG"
+      fi
+      LASTLINE=""
+      LASTLABEL=""
+      ;;
     r)
       RERUN="True";;
     s)
@@ -253,8 +415,15 @@ save_state () {
 '''
 functionStructTemplate='''f_{label} () {{
 CURRENT_LABEL="{label}"
+CURRENT_LINE="{line}"
 if [[ -z "$RERUN" ]]; then
   if [[ -n "$LASTCOUNT" && "$LASTCOUNT" > "$CURRENT_COUNT" ]]; then
+    if [[ -n "$SHOW" ]]; then
+      echo "{message}"
+    fi
+    return
+  fi
+  if [[ -n "$LASTLINE" && "$LASTLINE" > "$CURRENT_LINE" ]]; then
     if [[ -n "$SHOW" ]]; then
       echo "{message}"
     fi
@@ -274,8 +443,15 @@ fi
 functionCommandTemplate='''f_{label} () {{
 CURRENT_LABEL="{label}"
 CURRENT_COUNT="{count}"
+CURRENT_LINE="{line}"
 if [[ -z "$RERUN" ]]; then
   if [[ -n "$LASTCOUNT" && "$LASTCOUNT" > "$CURRENT_COUNT" ]]; then
+    if [[ -n "$SHOWCOMMAND" ]]; then
+      echo "{message}"
+    fi
+    return
+  fi
+  if [[ -n "$LASTLINE" && "$LASTLINE" > "$CURRENT_LINE" ]]; then
     if [[ -n "$SHOWCOMMAND" ]]; then
       echo "{message}"
     fi
@@ -311,6 +487,7 @@ def gen(s, output=None):
     }
   levelStr = '  ' * s['level']
   label = s['label']
+  line = s['line']
   if s['type'] == 'struct': # do struct
     prefix = "{line}|{label}|{count}".format(
                 line=s['line'],
@@ -324,6 +501,7 @@ def gen(s, output=None):
       output['show'].append(stateMessage)
       functionList.append(functionStructTemplate.format(
         label=label,
+        line=line,
         stateMessage=stateMessage,
         message=simpleMessage
       ))
@@ -359,6 +537,7 @@ def gen(s, output=None):
       functionList.append(functionCommandTemplate.format(
         label=label,
         count=s['stepCount'],
+        line=line,
         stateMessage=stateMessage,
         message='\n'.join(fullMessage),
         command=s['command'],
@@ -375,17 +554,17 @@ def gen(s, output=None):
     '''.format(
         bashTemplate=bashTemplate,
         func='\n'.join(functionList),
-        main='\n'.join(mainList),
+        main='\n'.join(mainList)
     )
     return output
 
 output = gen(struct)
-with open(f'{inputFile}.step.sh', 'w') as f:
-  f.write(output['outfile'])
+if onlyShow:
+  print('\n'.join(output['show']))
+else:
+  with open(f'.{inputFile}.step.sh', 'w') as f:
+    f.write(output['outfile'])
 
 if debug:
   import ipdb
-  import json
-  #structStr = json.dumps(struct, indent=2)
-  #print(structStr)
   ipdb.set_trace()
