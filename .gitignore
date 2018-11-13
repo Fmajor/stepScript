@@ -4,3 +4,4 @@
 .stepScript.session
 build
 demo/makefile
+dist

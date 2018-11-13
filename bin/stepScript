@@ -92,7 +92,7 @@ def getLevel(input):
     return [level, input[level:-1]]
   else:
     raise Exception('need debug here for {}'.format(input))
-makefileTemplate='''.PHONY: update step showStruct showAll edit all run showCommand line count label
+makefileTemplate='''.PHONY: update step showStruct showAll edit all run showCommand line count label rerun
 RAWSCRIPT := {file}
 SCRIPT := .$(RAWSCRIPT).step.sh
 FLAGS :=
@@ -107,6 +107,8 @@ endif
 help:
 	@echo "update step showStruct showAll edit"
 
+rerun: run
+	@:
 step: run
 	@:
 showStruct: run
@@ -115,8 +117,8 @@ showCommand: run
 	@:
 showAll: run
 	@:
-update: run
-	@:
+update:
+	stepScript $(RAWSCRIPT)
 line: run
 	@:
 count: run
@@ -130,15 +132,15 @@ doProcess :=
 ifneq ($(SCRIPT), $(wildcard $(SCRIPT)))
 	doProcess:=True
 endif
-ifneq ($(findstring update,$(MAKECMDGOALS)),)
-	doProcess:=True
-endif
 run:
 ifeq ($(RAWSCRIPT),)
 	$(error the name of the raw script is empty, edit it...)
 endif
 ifneq ($(doProcess),)
 	stepScript $(RAWSCRIPT)
+endif
+ifneq ($(findstring rerun,$(MAKECMDGOALS)),)
+	$(eval FLAGS:=$(FLAGS) -r)
 endif
 ifneq ($(findstring step,$(MAKECMDGOALS)),)
 	$(eval FLAGS:=$(FLAGS) -s)
@@ -191,12 +193,16 @@ config = {
   'skipPrefix': '#x ',
   'normalPrefix': '# ',
 }
-commentStyle = f'{Fore.BLUE}{{}}{Style.BRIGHT}{Style.RESET_ALL}'
-commandStyle = f'{Fore.YELLOW}{{}}{Style.BRIGHT}{Style.RESET_ALL}'
+blue=Fore.BLUE;bright=Style.BRIGHT;resetall=Style.RESET_ALL;red=Fore.RED
+yellow=Fore.YELLOW;lightgreen_ex=Fore.LIGHTGREEN_EX;normal=Style.NORMAL
+green=Fore.GREEN
+
+commentStyle = '{blue}{{}}{bright}{resetall}'.format(**locals())
+commandStyle = '{yellow}{{}}{bright}{resetall}'.format(**locals())
 levelColor = [
-  f'{Fore.LIGHTGREEN_EX}{{}}{Style.NORMAL}{Style.RESET_ALL}',
-  f'{Fore.GREEN}{{}}{Style.NORMAL}{Style.RESET_ALL}',
-  f'{Fore.GREEN}{{}}{Style.BRIGHT}{Style.RESET_ALL}',
+  '{lightgreen_ex}{{}}{normal}{resetall}'.format(**locals()),
+  '{green}{{}}{normal}{resetall}'.format(**locals()),
+  '{green}{{}}{bright}{resetall}'.format(**locals()),
 ]
 configFile = ''
 onlyShow = False
@@ -333,9 +339,9 @@ def modifyStructLabel(s, prefix):
     for index, each in enumerate(s['commands'], start=1):
       index = nformat.format(index)
       if prefix:
-        modifyStructLabel(each, f"{prefix}.{index}")
+        modifyStructLabel(each, "{prefix}.{index}".format(**locals()))
       else:
-        modifyStructLabel(each, f"{index}")
+        modifyStructLabel(each, "{index}".format(**locals()))
   elif s['type'] == 'group':
     commandCount += 1
     s['stepCount'] = commandCount
@@ -375,7 +381,25 @@ CURRENT_LINE=""
 CURRENT_LABEL=""
 CURRENT_COUNT=""
 
-while getopts 'rsSAnlcN:L:C:' OPT; do
+function help () {
+cat << EOF
+usage: $0 [-hrlncCsSAL:N:C:]
+  -h: show this help message
+  -r: rerun from the beginning
+  -l:       run after label, read from session file
+  -L label: run after label
+  -n     :  run after line, read from session file
+  -N line:  run after line
+  -c:       run after code count, read from session file
+  -C count: run after code count
+  -s: run by steps
+  -S: show skipped structures
+  -A: show skipped commands and comments
+EOF
+exit 1
+}
+
+while getopts 'hrsSAnlcN:L:C:' OPT; do
   case $OPT in
     L)
       LASTLABEL="$OPTARG"
@@ -411,21 +435,10 @@ while getopts 'rsSAnlcN:L:C:' OPT; do
       SHOW="True";;
     A)
       SHOWCOMMAND="True";;
+    h)
+      help;;
     ?)
-cat << EOF
-usage: $0 [-slcr]
-  -r: rerun from the beginning
-  -l:       run by label, read from session file
-  -l label: run by label
-  -n     :  run by line, read from session file
-  -N line:  run by line
-  -c:       run by code count, read from session file
-  -C count: run by code count
-  -s: run by steps
-  -S: show skipped structures
-  -A: show skipped commands
-EOF
-exit 1
+      help;;
   esac
 done
 
@@ -528,9 +541,9 @@ def gen(s, output=None):
                 count=' ' * getDigital(commandCount))
     if s['level'] >= 0:
       colorLevel = s['level'] if s['level'] < len(levelColor) else len(levelColor)
-      title = levelColor[colorLevel].format(f"## {s['title']}")
-      stateMessage = f"{prefix}|{levelStr}{title}"
-      simpleMessage = f"  {levelStr}{title}"
+      title = levelColor[colorLevel].format("## {}".format(s['title']))
+      stateMessage = "{prefix}|{levelStr}{title}".format(**locals())
+      simpleMessage = "  {levelStr}{title}".format(**locals())
       output['show'].append(stateMessage)
       functionList.append(functionStructTemplate.format(
         label=label,
@@ -538,7 +551,7 @@ def gen(s, output=None):
         stateMessage=stateMessage,
         message=simpleMessage
       ))
-      mainList.append(f'f_{label}')
+      mainList.append('f_{label}'.format(**locals()))
     for each in s['commands']:
       gen(each, output)
   elif s['type'] == 'group': # do command
@@ -551,22 +564,23 @@ def gen(s, output=None):
     fullMessage = []
     for comment in s['comments']:
       comment = commentStyle.format(comment)
-      output['show'].append(f"{blank}|{levelStr}{comment}")
-      fullMessage.append(f"  {levelStr}{comment}")
+      output['show'].append("{blank}|{levelStr}{comment}".format(**locals()))
+      fullMessage.append("  {levelStr}{comment}".format(**locals()))
     if s['command']:
       if s.get('multiline'):
         for index, command in enumerate(s['command'].split('\n')):
           if not index:
-            stateMessage = f"{prefix}|{levelStr}{command}"
+            stateMessage = "{prefix}|{levelStr}{command}".format(**locals())
             output['show'].append(stateMessage)
-            fullMessage.append(commandStyle.format(f"$ {levelStr}{command}"))
+            fullMessage.append(commandStyle.format("$ {levelStr}{command}".format(**locals())))
           else:
             output['show'].append(f"{blank}|{levelStr}{command}")
-            fullMessage.append(commandStyle.format(f"$ {levelStr}{command}"))
+            fullMessage.append(commandStyle.format("$ {levelStr}{command}".format(**locals())))
       else:
-        stateMessage = f"{prefix}|{levelStr}{s['command']}"
+        command = s['command']
+        stateMessage = "{prefix}|{levelStr}{command}".format(**locals())
         output['show'].append(stateMessage)
-        fullMessage.append(commandStyle.format(f"$ {levelStr}{s['command']}"))
+        fullMessage.append(commandStyle.format("$ {levelStr}{command}".format(**locals())))
       functionList.append(functionCommandTemplate.format(
         label=label,
         count=s['stepCount'],
@@ -574,9 +588,9 @@ def gen(s, output=None):
         stateMessage=stateMessage,
         message='\n'.join(fullMessage),
         command=s['command'],
-        errorMessage=f"{Fore.RED}{stateMessage}{Style.BRIGHT}{Style.RESET_ALL}"
+        errorMessage="{red}{stateMessage}{bright}{resetall}".format(red=red, bright=bright, resetall=resetall, stateMessage=stateMessage)
       ))
-      mainList.append(f'f_{label}')
+      mainList.append('f_{label}'.format(label=label))
   if isRoot:
     output['func'] = functionList
     output['main'] = mainList
@@ -595,7 +609,7 @@ output = gen(struct)
 if onlyShow:
   print('\n'.join(output['show']))
 else:
-  with open(f'.{inputFile}.step.sh', 'w') as f:
+  with open('.{inputFile}.step.sh'.format(inputFile=inputFile), 'w') as f:
     f.write(output['outfile'])
 
 if debug:
