@@ -9,6 +9,7 @@ A bash script parser to run bash script in colorful mode.
 
 ## inspect
 ### the demo script file
+[!raw script](./figs/raw_script.png)
 ### how stepScript understand the script file
 The first tree coloum is "line number|label|command count"
 * line number is the line number in the raw script file
