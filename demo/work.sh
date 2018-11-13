@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 echo 'work start'
 ## step0
 	# start of step0
