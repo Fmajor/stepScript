@@ -124,3 +124,7 @@ see the [demo](#the-demo-script-file)
   "#mls": begin of a multiline command
   "#mle": end of a multiline command
 ```
+## install
+```
+python setup.py install
+```
