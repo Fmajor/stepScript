@@ -70,9 +70,9 @@ stepScript work.sh
 we run the script till breakdown
 #### rerun from beginning (force rerun from beginning)
 ![rerun](./figs/rerun_beginning.png)
-#### rerun (rerun from last failed)
+#### rerun (rerun from last failed command
 ![rerun](./figs/rerun.png)
-we skip good command
+we skip good command (by command count, 15 in this example)
 #### rerun and show skipped structures
 ![rerun](./figs/rerun_showStruct.png)
 #### rerun and show skipped commands
@@ -86,7 +86,7 @@ Make sure you understand [how stepScript parse the script](#how-stepscript-under
 Make sure you understand [how stepScript parse the script](#how-stepscript-understand-the-script-file)
 ![with_value](./figs/with_value.png)
 #### step mode (run command by command with ENTER)
-![step](./figs/step.fig)
+![step](./figs/step.gif)
 #### clean (rm processed script and session file)
 ```shell
 $ make clean
