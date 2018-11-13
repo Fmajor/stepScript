@@ -169,7 +169,7 @@ ifneq ($(count),)
 else ifneq ($(findstring count,$(MAKECMDGOALS)),)
 	$(eval FLAGS:=$(FLAGS) -c)
 endif
-	bash -- $(SCRIPT) $(FLAGS)
+	bash $(SCRIPT) $(FLAGS)
 clean:
 	rm .stepScript.session
 	rm $(SCRIPT)
