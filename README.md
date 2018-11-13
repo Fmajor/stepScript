@@ -1,5 +1,5 @@
 # stepScript
-A bash script parser to run bash script in colorful mode.
+A bash script parser to run bash script in step and colorful mode.
 
 ## functions
 1. Code highlights: structure tree in green, comment in blue and input command in yellow
