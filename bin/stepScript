@@ -202,6 +202,7 @@ usage: $0 [-hrlncCsSAL:N:C:]
 EOF
 exit 1
 }
+DEFAULT=TRUE
 
 while getopts 'hrsSAnlcN:L:C:' OPT; do
   case $OPT in
@@ -209,27 +210,34 @@ while getopts 'hrsSAnlcN:L:C:' OPT; do
       LASTLABEL="$OPTARG"
       LASTCOUNT=""
       LASTLINE=""
+      DEFAULT=""
       ;;
     N)
       LASTLINE="$OPTARG"
       LASTCOUNT=""
       LASTLABEL=""
+      DEFAULT=""
       ;;
     C)
       LASTCOUNT="$OPTARG"
       LASTLINE=""
       LASTLABEL=""
+      DEFAULT=""
       ;;
     l)
-      LASTCOUNT="" LASTLINE=""
+      LASTCOUNT=""
+      LASTLINE=""
+      DEFAULT=""
       ;;
     n)
       LASTCOUNT=""
       LASTLABEL=""
+      DEFAULT=""
       ;;
     c)
       LASTLINE=""
       LASTLABEL=""
+      DEFAULT=""
       ;;
     r)
       RERUN="True";;
@@ -251,6 +259,10 @@ if [[ -z "$RERUN" ]]; then
     echo "\x1b[36mStart at count:$LASTCOUNT|line:$LASTLINE|label:$LASTLABEL\x1b[0m"
   fi
 fi
+if [[ -n $DEFAULT ]]; then
+  LASTLINE=""
+  LASTLABEL=""
+fi
 
 check_error () {
   if [[ "$?" -ne 0 ]]; then
@@ -264,6 +276,7 @@ save_state () {
 
 '''
 functionStructTemplate='''f_{label} () {{
+CURRENT_COUNT="{count}"
 CURRENT_LABEL="{label}"
 CURRENT_LINE="{line}"
 ALWAYSRUN="{alwaysrun}"
@@ -288,7 +301,7 @@ if [[ -z "$RERUN" && -z "$ALWAYSRUN" ]]; then
     return
   fi
 fi
-  save_state "{stateMessage}"
+  save_state "{stateMessageWithCount}"
 if [[ -z "$SILENT" ]]; then
   echo "{message}"
 fi
@@ -300,6 +313,7 @@ CURRENT_COUNT="{count}"
 CURRENT_LINE="{line}"
 ALWAYSRUN="{alwaysrun}"
 SILENT="{silent}"
+ATOMIC="{atomic}"
 if [[ -z "$RERUN" && -z "$ALWAYSRUN" ]]; then
   if [[ -n "$LASTCOUNT" && "$LASTCOUNT" > "$CURRENT_COUNT" ]]; then
     if [[ -n "$SHOWCOMMAND" ]]; then
@@ -320,7 +334,9 @@ if [[ -z "$RERUN" && -z "$ALWAYSRUN" ]]; then
     return
   fi
 fi
-save_state "{stateMessage}"
+if [[ -z "$ATOMIC" ]]; then
+  save_state "{stateMessage}"
+fi
 if [[ -n "$BYSTEP" && -z "$SILENT" ]]; then
   printf "{message}"
   read -r _temp
@@ -360,8 +376,6 @@ def doPrepare(args):
 # default config
 config = {
   'structPrefix': '## ',
-  'alwaysRunStructPrefix': '##a ',
-  'alwaysRunStructSilentPrefix': '##as ',
   'skipPrefix': '#x ',
   'normalPrefix': '# ',
 }
@@ -405,7 +419,9 @@ for op, value in opts:
     debug = True
 struct = {
   'alwaysrun': '',
+  'stepCount': '0',
   'silent': '',
+  'atomic': '',
   'title': '',
   'level': -1,
   'commands': [],
@@ -450,19 +466,26 @@ for lineNumber, eachline in enumerate(f, start=1):
   elif eachline.startswith('#'): # this is a comment
     if multilineState and not eachline.startswith('#mle'):
       raise Exception('line {}: should not have comment in multiline state'.format(lineNumber))
-    if eachline.startswith('## ') or eachline.startswith('##a ') or eachline.startswith('##as '): # new struct, new level
-      if eachline.startswith('## '):
+    if eachline.startswith('## '): # new struct, new level
+      thisTitle = eachline[3:]
+      if eachline.endswith('|') and len(eachline.split('|')) == 3:
+        flags = eachline.split('|')[1]
+        if 'r' in flags:
+          alwaysrun = 'True'
+        else:
+          alwaysrun = ''
+        if 's' in flags:
+          silent = 'True'
+        else:
+          silent = ''
+        if 'a' in flags:
+          atomic = 'True'
+        else:
+          atomic = ''
+      else:
         alwaysrun = ''
-        thisTitle = eachline[3:]
         silent = ''
-      elif eachline.startswith('##a '):
-        alwaysrun = "True"
-        thisTitle = eachline[4:]
-        silent = ''
-      elif eachline.startswith('##as '):
-        alwaysrun = "True"
-        thisTitle = eachline[5:]
-        silent = 'True'
+        atomic = ''
       # in case that a group have comment but no command
       if newCommand and newCommand['comments']:
         comments = newCommand['comments']
@@ -472,6 +495,8 @@ for lineNumber, eachline in enumerate(f, start=1):
       stack.append(currentStruct)
       currentStruct = {
         "alwaysrun": alwaysrun,
+        "silent": silent,
+        "atomic": atomic,
         "title": thisTitle,
         "level": thisLevel,
         "comments": comments,
@@ -479,7 +504,6 @@ for lineNumber, eachline in enumerate(f, start=1):
         "type": "struct",
         "line": lineNumber,
       }
-      currentStruct['silent'] = silent
       currentCommands = currentStruct['commands']
       stack[-1]['commands'].append(currentStruct)
       #print('level ++ with {}'.format(eachline))
@@ -495,7 +519,11 @@ for lineNumber, eachline in enumerate(f, start=1):
       newCommand['line'] = lineNumber
       newCommand['multiline'] = True
       newCommand['alwaysrun'] = currentStruct['alwaysrun']
-      newCommand['silent'] = currentStruct.get('silent', '')
+      newCommand['silent'] = currentStruct['silent']
+      if len(currentCommands) > 0:
+        newCommand['atomic'] = currentStruct['atomic']
+      else:
+        newCommand['atomic'] = ''
       currentCommands.append(newCommand)
       newCommand = None
   else: # this is a command
@@ -505,7 +533,11 @@ for lineNumber, eachline in enumerate(f, start=1):
       newCommand['command'] = eachline
       newCommand['line'] = lineNumber
       newCommand['alwaysrun'] = currentStruct['alwaysrun']
-      newCommand['silent'] = currentStruct.get('silent', '')
+      newCommand['silent'] = currentStruct['silent']
+      if len(currentCommands) > 0:
+        newCommand['atomic'] = currentStruct['atomic']
+      else:
+        newCommand['atomic'] = ''
       currentCommands.append(newCommand)
       newCommand = None
 f.close()
@@ -557,6 +589,20 @@ def modifyStructLength(s):
   elif s['type'] == 'group':
     s['stepCount'] = stepFormat.format(s['stepCount'])
 modifyStructLength(struct)
+countBlankStr = ' ' * getDigital(commandCount)
+def modifyStructCount(s):
+  if s['type'] == 'struct':
+    if s['commands']:
+      for each in s['commands']:
+        modifyStructCount(each)
+      count = modifyStructCount(s['commands'][0])
+      if count:
+        s['stepCount'] = count
+      return count
+  elif s['type'] == 'group':
+    return s['stepCount']
+modifyStructCount(struct)
+
 # finish struct analysis, not generate output data
 # output functions
 functionList = []
@@ -574,11 +620,17 @@ def gen(s, output=None):
   line = s['line']
   alwaysrun = s['alwaysrun']
   silent = s['silent']
+  atomic = s['atomic']
+  count = s.get('stepCount', countBlankStr)
   if s['type'] == 'struct': # do struct
     prefix = "{line}|{label}|{count}".format(
                 line=s['line'],
                 label=s['label'],
-                count=' ' * getDigital(commandCount))
+                count=countBlankStr)
+    prefixWithCount = "{line}|{label}|{count}".format(
+                line=s['line'],
+                label=s['label'],
+                count=count)
     lp = len(prefix)
     blank = " " * lp
     fullMessage = []
@@ -588,25 +640,23 @@ def gen(s, output=None):
         output['show'].append("{blank}|{levelStr}{comment}".format(**locals()))
         fullMessage.append("  {levelStr}{comment}".format(**locals()))
       colorLevel = s['level'] if s['level'] < len(levelColor) else len(levelColor)
-      if alwaysrun:
-        if silent:
-          title = levelColor[colorLevel].format("##as {}".format(s['title']))
-        else:
-          title = levelColor[colorLevel].format("##a {}".format(s['title']))
-      else:
-        title = levelColor[colorLevel].format("## {}".format(s['title']))
+      title = levelColor[colorLevel].format("## {}".format(s['title']))
       stateMessage = "{prefix}|{levelStr}{title}".format(**locals())
+      stateMessageWithCount = "{prefixWithCount}|{levelStr}{title}".format(**locals())
       simpleMessage = "  {levelStr}{title}".format(**locals())
       fullMessage.append(simpleMessage)
-      output['show'].append(stateMessage)
+      #output['show'].append(stateMessage)
+      output['show'].append(stateMessageWithCount)
       stateMessage = stateMessage.replace('"', r'\"')
+      stateMessageWithCount = stateMessage.replace('"', r'\"')
       fullMessage = list(map(lambda _:_.replace('"', r'\"'), fullMessage))
       functionList.append(functionStructTemplate.format(
+        count=count,
         alwaysrun=alwaysrun,
         silent=silent,
         label=label,
         line=line,
-        stateMessage=stateMessage,
+        stateMessageWithCount=stateMessageWithCount,
         message='\n'.join(fullMessage)
       ))
       mainList.append('f_{label}'.format(**locals()))
@@ -645,6 +695,7 @@ def gen(s, output=None):
         alwaysrun=alwaysrun,
         silent=silent,
         label=label,
+        atomic=atomic,
         count=s['stepCount'],
         line=line,
         stateMessage=stateMessage,

@@ -1,11 +1,11 @@
 #!/bin/bash
 echo 'work start'
-##a always run these struct and command
-	##a struct just for show
+## always run these struct and command |r|
+	## struct just for show |r|
 	echo "i'm always here"
 
-##as always run these struct and command, but not echo
-	##as struct just for show, but not echo
+## always run these struct and command, but not echo |rs|
+	## struct just for show, but not echo |rs|
 	echo "i'm always here, but you can not see the origin command"
 
 # where does this comment go?
@@ -61,6 +61,8 @@ echo 'work between steps'
 	good for you
 	EOF
 	#mle
-echo 'break down here' && ls file_that_not_exists
+## test atomic |a|
+	echo "rerun this atomic block"
+	echo 'break down here' && ls file_that_not_exists
 echo 'work end'
 

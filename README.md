@@ -118,16 +118,28 @@ see the [demo](#the-demo-script-file)
 1. make indent with "\t"
   reason: if you want to have right multiline string using the
           "cat <<-EOF" syntax within indent code, you must make indent using tab.
-2. line startsWith(except for the indent):
+2. line starts with(except for the indent):
   "## ": is a new struct
-  "##a ": is a new struct that will always run (e.g. some variable setup)
-  "##as ": is a new struct that will always run, but without echo
   "# ": is a normal comment for later command
   "#x ": is a comment that not parsed by stepScript
   "#mls": begin of a multiline command
   "#mle": end of a multiline command
+3. for "struct" lines which starts with "## ",
+   you can have suffix to add flags for them,
+   these flags are
+   "r": always run flag, command under this block will always run (can not skip)
+   "s": silence flag, this command will not echo its source code
+   "a": atomic flag, command under this block is atomic, if any command failed,
+        the next rerun will start from the first command in this block
 
-see more example in demo/test/work.sh
+  example:
+    ## normal block
+    ## blocks that will always run |r|
+    ## blocks that will always run silently |rs|
+    ## blocks that is atomic |a|
+    ## blocks that is atomic and will always run silently |rsa|
+
+see more example in demo/byFunction/*
 ```
 ## install
 ```
