@@ -266,7 +266,9 @@ save_state () {
 functionStructTemplate='''f_{label} () {{
 CURRENT_LABEL="{label}"
 CURRENT_LINE="{line}"
-if [[ -z "$RERUN" ]]; then
+ALWAYSRUN="{alwaysrun}"
+SILENT="{silent}"
+if [[ -z "$RERUN" && -z "$ALWAYSRUN" ]]; then
   if [[ -n "$LASTCOUNT" && "$LASTCOUNT" > "$CURRENT_COUNT" ]]; then
     if [[ -n "$SHOW" ]]; then
       echo "{message}"
@@ -287,14 +289,18 @@ if [[ -z "$RERUN" ]]; then
   fi
 fi
   save_state "{stateMessage}"
+if [[ -z "$SILENT" ]]; then
   echo "{message}"
+fi
 }}
 '''
 functionCommandTemplate='''f_{label} () {{
 CURRENT_LABEL="{label}"
 CURRENT_COUNT="{count}"
 CURRENT_LINE="{line}"
-if [[ -z "$RERUN" ]]; then
+ALWAYSRUN="{alwaysrun}"
+SILENT="{silent}"
+if [[ -z "$RERUN" && -z "$ALWAYSRUN" ]]; then
   if [[ -n "$LASTCOUNT" && "$LASTCOUNT" > "$CURRENT_COUNT" ]]; then
     if [[ -n "$SHOWCOMMAND" ]]; then
       echo "{message}"
@@ -315,10 +321,10 @@ if [[ -z "$RERUN" ]]; then
   fi
 fi
 save_state "{stateMessage}"
-if [[ -n "$BYSTEP" ]]; then
+if [[ -n "$BYSTEP" && -z "$SILENT" ]]; then
   printf "{message}"
   read -r _temp
-else
+elif [[ -z "$SILENT" ]]; then
   echo "{message}"
 fi
 {command}
@@ -354,6 +360,8 @@ def doPrepare(args):
 # default config
 config = {
   'structPrefix': '## ',
+  'alwaysRunStructPrefix': '##a ',
+  'alwaysRunStructSilentPrefix': '##as ',
   'skipPrefix': '#x ',
   'normalPrefix': '# ',
 }
@@ -396,6 +404,8 @@ for op, value in opts:
   elif op == '-i':
     debug = True
 struct = {
+  'alwaysrun': '',
+  'silent': '',
   'title': '',
   'level': -1,
   'commands': [],
@@ -405,7 +415,7 @@ struct = {
 # basic struct
 stack = [struct]
 currentStruct = struct
-currentCommands = []
+currentCommands = struct['commands']
 f = open(inputFile)
 
 multilineState = False
@@ -440,16 +450,28 @@ for lineNumber, eachline in enumerate(f, start=1):
   elif eachline.startswith('#'): # this is a comment
     if multilineState and not eachline.startswith('#mle'):
       raise Exception('line {}: should not have comment in multiline state'.format(lineNumber))
-    if eachline.startswith('## '): # new struct, new level
+    if eachline.startswith('## ') or eachline.startswith('##a ') or eachline.startswith('##as '): # new struct, new level
+      if eachline.startswith('## '):
+        alwaysrun = ''
+        thisTitle = eachline[3:]
+        silent = ''
+      elif eachline.startswith('##a '):
+        alwaysrun = "True"
+        thisTitle = eachline[4:]
+        silent = ''
+      elif eachline.startswith('##as '):
+        alwaysrun = "True"
+        thisTitle = eachline[5:]
+        silent = 'True'
       # in case that a group have comment but no command
       if newCommand and newCommand['comments']:
         comments = newCommand['comments']
       else:
         comments = []
       newCommand = None
-      thisTitle = eachline[3:]
       stack.append(currentStruct)
       currentStruct = {
+        "alwaysrun": alwaysrun,
         "title": thisTitle,
         "level": thisLevel,
         "comments": comments,
@@ -457,6 +479,7 @@ for lineNumber, eachline in enumerate(f, start=1):
         "type": "struct",
         "line": lineNumber,
       }
+      currentStruct['silent'] = silent
       currentCommands = currentStruct['commands']
       stack[-1]['commands'].append(currentStruct)
       #print('level ++ with {}'.format(eachline))
@@ -471,6 +494,8 @@ for lineNumber, eachline in enumerate(f, start=1):
       newCommand['command'] = '\n'.join(multilineList)
       newCommand['line'] = lineNumber
       newCommand['multiline'] = True
+      newCommand['alwaysrun'] = currentStruct['alwaysrun']
+      newCommand['silent'] = currentStruct.get('silent', '')
       currentCommands.append(newCommand)
       newCommand = None
   else: # this is a command
@@ -479,6 +504,8 @@ for lineNumber, eachline in enumerate(f, start=1):
     else:
       newCommand['command'] = eachline
       newCommand['line'] = lineNumber
+      newCommand['alwaysrun'] = currentStruct['alwaysrun']
+      newCommand['silent'] = currentStruct.get('silent', '')
       currentCommands.append(newCommand)
       newCommand = None
 f.close()
@@ -545,6 +572,8 @@ def gen(s, output=None):
   levelStr = '  ' * s['level']
   label = s['label']
   line = s['line']
+  alwaysrun = s['alwaysrun']
+  silent = s['silent']
   if s['type'] == 'struct': # do struct
     prefix = "{line}|{label}|{count}".format(
                 line=s['line'],
@@ -559,12 +588,22 @@ def gen(s, output=None):
         output['show'].append("{blank}|{levelStr}{comment}".format(**locals()))
         fullMessage.append("  {levelStr}{comment}".format(**locals()))
       colorLevel = s['level'] if s['level'] < len(levelColor) else len(levelColor)
-      title = levelColor[colorLevel].format("## {}".format(s['title']))
+      if alwaysrun:
+        if silent:
+          title = levelColor[colorLevel].format("##as {}".format(s['title']))
+        else:
+          title = levelColor[colorLevel].format("##a {}".format(s['title']))
+      else:
+        title = levelColor[colorLevel].format("## {}".format(s['title']))
       stateMessage = "{prefix}|{levelStr}{title}".format(**locals())
       simpleMessage = "  {levelStr}{title}".format(**locals())
       fullMessage.append(simpleMessage)
       output['show'].append(stateMessage)
+      stateMessage = stateMessage.replace('"', r'\"')
+      fullMessage = list(map(lambda _:_.replace('"', r'\"'), fullMessage))
       functionList.append(functionStructTemplate.format(
+        alwaysrun=alwaysrun,
+        silent=silent,
         label=label,
         line=line,
         stateMessage=stateMessage,
@@ -600,7 +639,11 @@ def gen(s, output=None):
         stateMessage = "{prefix}|{levelStr}{command}".format(**locals())
         output['show'].append(stateMessage)
         fullMessage.append(commandStyle.format("$ {levelStr}{command}".format(**locals())))
+      stateMessage = stateMessage.replace('"', r'\"')
+      fullMessage = list(map(lambda _:_.replace('"', r'\"'), fullMessage))
       functionList.append(functionCommandTemplate.format(
+        alwaysrun=alwaysrun,
+        silent=silent,
         label=label,
         count=s['stepCount'],
         line=line,

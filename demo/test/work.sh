@@ -1,9 +1,15 @@
 #!/bin/bash
 echo 'work start'
+##a always run these struct and command
+	##a struct just for show
+	echo "i'm always here"
+
+##as always run these struct and command, but not echo
+	##as struct just for show, but not echo
+	echo "i'm always here, but you can not see the origin command"
+
 # where does this comment go?
 # emmmm...
-
-
 
 ## step0
 	# start of step0
@@ -42,6 +48,10 @@ echo 'work between steps'
 	## step1.1
 		echo 'step1.1 bad, rerun here and bad again'
 	## step1.2
+		# test cd...
+		cd ..
+		ls
+		cd -
 		# test 2 level change
 		echo 'step1.2'
 ## step2
