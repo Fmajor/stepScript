@@ -415,7 +415,7 @@ newCommand = None
 # main loop for parser
 for lineNumber, eachline in enumerate(f, start=1):
   [thisLevel, eachline] = getLevel(eachline)
-  if not eachline.strip(): continue
+  if not eachline.strip(): continue # skip blank line
   #print('{:2d} {} {}'.format(thisLevel, thisLevel * '  ', eachline))
   structLevel = currentStruct['level']
   if thisLevel > structLevel: # normal state
@@ -441,12 +441,18 @@ for lineNumber, eachline in enumerate(f, start=1):
     if multilineState and not eachline.startswith('#mle'):
       raise Exception('line {}: should not have comment in multiline state'.format(lineNumber))
     if eachline.startswith('## '): # new struct, new level
+      # in case that a group have comment but no command
+      if newCommand and newCommand['comments']:
+        comments = newCommand['comments']
+      else:
+        comments = []
       newCommand = None
       thisTitle = eachline[3:]
       stack.append(currentStruct)
       currentStruct = {
         "title": thisTitle,
         "level": thisLevel,
+        "comments": comments,
         "commands": [],
         "type": "struct",
         "line": lineNumber,
@@ -544,17 +550,25 @@ def gen(s, output=None):
                 line=s['line'],
                 label=s['label'],
                 count=' ' * getDigital(commandCount))
+    lp = len(prefix)
+    blank = " " * lp
+    fullMessage = []
     if s['level'] >= 0:
+      for comment in s['comments']:
+        comment = commentStyle.format(comment)
+        output['show'].append("{blank}|{levelStr}{comment}".format(**locals()))
+        fullMessage.append("  {levelStr}{comment}".format(**locals()))
       colorLevel = s['level'] if s['level'] < len(levelColor) else len(levelColor)
       title = levelColor[colorLevel].format("## {}".format(s['title']))
       stateMessage = "{prefix}|{levelStr}{title}".format(**locals())
       simpleMessage = "  {levelStr}{title}".format(**locals())
+      fullMessage.append(simpleMessage)
       output['show'].append(stateMessage)
       functionList.append(functionStructTemplate.format(
         label=label,
         line=line,
         stateMessage=stateMessage,
-        message=simpleMessage
+        message='\n'.join(fullMessage)
       ))
       mainList.append('f_{label}'.format(**locals()))
     for each in s['commands']:
