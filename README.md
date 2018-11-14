@@ -120,12 +120,21 @@ see the [demo](#the-demo-script-file)
           "cat <<-EOF" syntax within indent code, you must make indent using tab.
 2. line startsWith(except for the indent):
   "## ": is a new struct
+  "##a ": is a new struct that will always run (e.g. some variable setup)
+  "##as ": is a new struct that will always run, but without echo
   "# ": is a normal comment for later command
   "#x ": is a comment that not parsed by stepScript
   "#mls": begin of a multiline command
   "#mle": end of a multiline command
+
+see more example in demo/test/work.sh
 ```
 ## install
 ```
 python setup.py install
 ```
+## FAQ
+1. The generated script is too large and verbose?
+  I will optimize it later
+2. The parse result is wrong
+  Do you forget to use '\t' to make indent? Or you can make a Issue with the problematical script
