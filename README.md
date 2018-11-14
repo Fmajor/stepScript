@@ -13,7 +13,7 @@ A bash script parser to run bash script in step and colorful mode.
 ![raw script](./figs/raw_script.png)
 ### how stepScript parse the script file
 ![show script](./figs/show.png)
-The first tree coloum is "line number|label|command count"
+The first tree columns are "line number|label|command count"
 * line number is the line number in the raw script file
 * label is the struct label
 * command count is the count of running command in the raw script file
