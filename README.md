@@ -126,7 +126,7 @@ see the [demo](#the-demo-script-file)
   "#mle": end of a multiline command
 3. for "struct" lines which starts with "## ",
    you can have suffix to add flags for them,
-   these flags are
+   they are put between two "|", these flags are
    "r": always run flag, command under this block will always run (can not skip)
    "s": silence flag, this command will not echo its source code
    "a": atomic flag, command under this block is atomic, if any command failed,
@@ -134,10 +134,10 @@ see the [demo](#the-demo-script-file)
 
   example:
     ## normal block
-    ## blocks that will always run |r|
-    ## blocks that will always run silently |rs|
-    ## blocks that is atomic |a|
-    ## blocks that is atomic and will always run silently |rsa|
+    ## block that will always run |r|
+    ## block that will always run silently |rs|
+    ## block that is atomic |a|
+    ## block that is atomic and will always run silently |rsa|
 
 see more example in demo/byFunction/*
 ```
@@ -147,6 +147,8 @@ python setup.py install
 ```
 ## FAQ
 1. The generated script is too large and verbose?
+
   I will optimize it later
 2. The parse result is wrong
+
   Do you forget to use '\t' to make indent? Or you can make a Issue with the problematical script
