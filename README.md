@@ -149,7 +149,9 @@ python setup.py install
 ```
 ## FAQ
 1. The generated script is too large and verbose?
+
     I will optimize it later
 
 2. The parse result is wrong
+
     Do you forget to use '\t' to make indent? Or you can make a Issue with the problematical script
