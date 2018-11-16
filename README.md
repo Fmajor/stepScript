@@ -128,16 +128,18 @@ see the [demo](#the-demo-script-file)
    you can have suffix to add flags for them,
    they are put between two "|", these flags are
    "r": always run flag, command under this block will always run (can not skip)
-   "s": silence flag, this command will not echo its source code
+   "q": quite flag, this command will not echo its source code
+   "s": skip flag, this struct and its substruct, commands will be skipped
    "a": atomic flag, command under this block is atomic, if any command failed,
         the next rerun will start from the first command in this block
 
   example:
     ## normal block
+    ## block that will be skipped |s|
     ## block that will always run |r|
-    ## block that will always run silently |rs|
+    ## block that will always run silently |rq|
     ## block that is atomic |a|
-    ## block that is atomic and will always run silently |rsa|
+    ## block that is atomic and will always run silently |rqa|
 
 see more example in demo/byFunction/*
 ```
@@ -148,5 +150,6 @@ python setup.py install
 ## FAQ
 1. The generated script is too large and verbose?
     I will optimize it later
+
 2. The parse result is wrong
     Do you forget to use '\t' to make indent? Or you can make a Issue with the problematical script
