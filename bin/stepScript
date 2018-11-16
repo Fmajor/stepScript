@@ -280,7 +280,10 @@ CURRENT_COUNT="{count}"
 CURRENT_LABEL="{label}"
 CURRENT_LINE="{line}"
 ALWAYSRUN="{alwaysrun}"
-SILENT="{silent}"
+QUITE="{quite}"
+if [[ "$ALWAYSRUN" == "SKIP" ]]; then
+  return
+fi
 if [[ -z "$RERUN" && -z "$ALWAYSRUN" ]]; then
   if [[ -n "$LASTCOUNT" && "$LASTCOUNT" > "$CURRENT_COUNT" ]]; then
     if [[ -n "$SHOW" ]]; then
@@ -302,7 +305,7 @@ if [[ -z "$RERUN" && -z "$ALWAYSRUN" ]]; then
   fi
 fi
   save_state "{stateMessageWithCount}"
-if [[ -z "$SILENT" ]]; then
+if [[ -z "$QUITE" ]]; then
   echo "{message}"
 fi
 }}
@@ -312,8 +315,11 @@ CURRENT_LABEL="{label}"
 CURRENT_COUNT="{count}"
 CURRENT_LINE="{line}"
 ALWAYSRUN="{alwaysrun}"
-SILENT="{silent}"
+QUITE="{quite}"
 ATOMIC="{atomic}"
+if [[ "$ALWAYSRUN" == "SKIP" ]]; then
+  return
+fi
 if [[ -z "$RERUN" && -z "$ALWAYSRUN" ]]; then
   if [[ -n "$LASTCOUNT" && "$LASTCOUNT" > "$CURRENT_COUNT" ]]; then
     if [[ -n "$SHOWCOMMAND" ]]; then
@@ -337,10 +343,10 @@ fi
 if [[ -z "$ATOMIC" ]]; then
   save_state "{stateMessage}"
 fi
-if [[ -n "$BYSTEP" && -z "$SILENT" ]]; then
+if [[ -n "$BYSTEP" && -z "$QUITE" ]]; then
   printf "{message}"
   read -r _temp
-elif [[ -z "$SILENT" ]]; then
+elif [[ -z "$QUITE" ]]; then
   echo "{message}"
 fi
 {command}
@@ -420,7 +426,7 @@ for op, value in opts:
 struct = {
   'alwaysrun': '',
   'stepCount': '0',
-  'silent': '',
+  'quite': '',
   'atomic': '',
   'title': '',
   'level': -1,
@@ -471,20 +477,22 @@ for lineNumber, eachline in enumerate(f, start=1):
       if eachline.endswith('|') and len(eachline.split('|')) == 3:
         flags = eachline.split('|')[1]
         if 'r' in flags:
-          alwaysrun = 'True'
+          alwaysrun = 'YES'
+        elif 's' in flags:
+          alwaysrun = 'SKIP'
         else:
           alwaysrun = ''
-        if 's' in flags:
-          silent = 'True'
+        if 'q' in flags:
+          quite = 'True'
         else:
-          silent = ''
+          quite = ''
         if 'a' in flags:
           atomic = 'True'
         else:
           atomic = ''
       else:
         alwaysrun = ''
-        silent = ''
+        quite = ''
         atomic = ''
       # in case that a group have comment but no command
       if newCommand and newCommand['comments']:
@@ -493,9 +501,10 @@ for lineNumber, eachline in enumerate(f, start=1):
         comments = []
       newCommand = None
       stack.append(currentStruct)
+      lastAlwaysRun = currentStruct['alwaysrun']
       currentStruct = {
-        "alwaysrun": alwaysrun,
-        "silent": silent,
+        "alwaysrun": lastAlwaysRun if lastAlwaysRun else alwaysrun,
+        "quite": quite,
         "atomic": atomic,
         "title": thisTitle,
         "level": thisLevel,
@@ -519,7 +528,7 @@ for lineNumber, eachline in enumerate(f, start=1):
       newCommand['line'] = lineNumber
       newCommand['multiline'] = True
       newCommand['alwaysrun'] = currentStruct['alwaysrun']
-      newCommand['silent'] = currentStruct['silent']
+      newCommand['quite'] = currentStruct['quite']
       if len(currentCommands) > 0:
         newCommand['atomic'] = currentStruct['atomic']
       else:
@@ -533,7 +542,7 @@ for lineNumber, eachline in enumerate(f, start=1):
       newCommand['command'] = eachline
       newCommand['line'] = lineNumber
       newCommand['alwaysrun'] = currentStruct['alwaysrun']
-      newCommand['silent'] = currentStruct['silent']
+      newCommand['quite'] = currentStruct['quite']
       if len(currentCommands) > 0:
         newCommand['atomic'] = currentStruct['atomic']
       else:
@@ -619,7 +628,7 @@ def gen(s, output=None):
   label = s['label']
   line = s['line']
   alwaysrun = s['alwaysrun']
-  silent = s['silent']
+  quite = s['quite']
   atomic = s['atomic']
   count = s.get('stepCount', countBlankStr)
   if s['type'] == 'struct': # do struct
@@ -653,7 +662,7 @@ def gen(s, output=None):
       functionList.append(functionStructTemplate.format(
         count=count,
         alwaysrun=alwaysrun,
-        silent=silent,
+        quite=quite,
         label=label,
         line=line,
         stateMessageWithCount=stateMessageWithCount,
@@ -693,7 +702,7 @@ def gen(s, output=None):
       fullMessage = list(map(lambda _:_.replace('"', r'\"'), fullMessage))
       functionList.append(functionCommandTemplate.format(
         alwaysrun=alwaysrun,
-        silent=silent,
+        quite=quite,
         label=label,
         atomic=atomic,
         count=s['stepCount'],

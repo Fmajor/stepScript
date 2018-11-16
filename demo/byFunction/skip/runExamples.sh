@@ -42,12 +42,12 @@ make line
 info "$ make label"
 make label
 
-info "$ make line=50"
-make line=50
-info "$ make label=6"
-make label=6
-info "$ make count=15"
-make count=15
+info "$ make line=27"
+make line=27
+info "$ make label=2"
+make label=2
+info "$ make count=10"
+make count=10
 
 info "$ make rerun step"
 make rerun step

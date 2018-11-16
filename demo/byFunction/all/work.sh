@@ -4,8 +4,13 @@ echo 'work start'
 	## struct just for show |r|
 	echo "i'm always here"
 
-## always run these struct and command, but not echo |rs|
-	## struct just for show, but not echo |rs|
+## test skip |s|
+	echo "this block will be skipped"
+	## including it's sub struct
+		echo "I'm also skipped"
+
+## always run these struct and command, but not echo |rq|
+	## struct just for show, but not echo |rq|
 	echo "i'm always here, but you can not see the origin command"
 
 # where does this comment go?
