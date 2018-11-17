@@ -66,6 +66,13 @@ echo 'work between steps'
 	good for you
 	EOF
 	#mle
+## step3 multiline second example
+	# multiline example
+	#mls
+	cat <<-EOF > test.swp
+	good for me
+	EOF
+	#mle
 ## test atomic |a|
 	echo "rerun this atomic block"
 	echo 'break down here' && ls file_that_not_exists

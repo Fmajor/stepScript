@@ -1,4 +1,4 @@
-#!python3
+#!/usr/bin/python3
 import sys
 import getopt
 import re
@@ -441,7 +441,6 @@ currentCommands = struct['commands']
 f = open(inputFile)
 
 multilineState = False
-multilineList = []
 newGroup = True
 newCommand = None
 # main loop for parser
@@ -522,6 +521,7 @@ for lineNumber, eachline in enumerate(f, start=1):
       newCommand['comments'].append(eachline)
     elif eachline.startswith('#mls'): # start of multi line
       multilineState = True
+      multilineList = []
     elif eachline.startswith('#mle'): # end of multi line
       multilineState = False
       newCommand['command'] = '\n'.join(multilineList)
