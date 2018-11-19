@@ -704,7 +704,7 @@ def gen(s, output=None):
         output['show'].append(stateMessage)
         fullMessage.append(commandStyle.format("$ {levelStr}{command}".format(**locals())))
       stateMessage = stateMessage.replace('"', r'\"')
-      fullMessage = list(map(lambda _:_.replace('"', r'\"'), fullMessage))
+      fullMessage = list(map(lambda _:escape(_), fullMessage))
       functionList.append(functionCommandTemplate.format(
         alwaysrun=alwaysrun,
         quite=quite,
