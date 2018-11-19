@@ -614,7 +614,7 @@ modifyStructCount(struct)
 
 def escape(string):
   string = string.replace('"', r'\"')
-  string = string.replace(r'\', r'\\\')
+  string = string.replace(r'\', r'\\')
   return string
 
 # finish struct analysis, not generate output data
