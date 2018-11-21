@@ -661,8 +661,8 @@ def gen(s, output=None):
       fullMessage.append(simpleMessage)
       #output['show'].append(stateMessage)
       output['show'].append(stateMessageWithCount)
-      stateMessage = stateMessage.replace('"', r'\"')
-      stateMessageWithCount = stateMessage.replace('"', r'\"')
+      stateMessage = escape(stateMessage)
+      stateMessageWithCount = escape(stateMessage)
       fullMessage = list(map(lambda _:_.replace('"', r'\"'), fullMessage))
       functionList.append(functionStructTemplate.format(
         count=count,
@@ -703,7 +703,7 @@ def gen(s, output=None):
         stateMessage = "{prefix}|{levelStr}{command}".format(**locals())
         output['show'].append(stateMessage)
         fullMessage.append(commandStyle.format("$ {levelStr}{command}".format(**locals())))
-      stateMessage = stateMessage.replace('"', r'\"')
+      stateMessage = escape(stateMessage)
       fullMessage = list(map(lambda _:escape(_), fullMessage))
       functionList.append(functionCommandTemplate.format(
         alwaysrun=alwaysrun,
